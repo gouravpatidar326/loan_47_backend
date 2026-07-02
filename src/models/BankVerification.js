@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const bankVerificationSchema = new mongoose.Schema(
   {
@@ -70,5 +71,7 @@ const bankVerificationSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+bankVerificationSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('BankVerification', bankVerificationSchema);

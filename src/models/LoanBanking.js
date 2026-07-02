@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const loanBankingSchema = new mongoose.Schema({
   loanApplicationId: {
@@ -34,5 +35,7 @@ const loanBankingSchema = new mongoose.Schema({
     type: Date
   }
 }, { timestamps: true });
+
+loanBankingSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('LoanBanking', loanBankingSchema);

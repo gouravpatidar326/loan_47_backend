@@ -41,7 +41,12 @@ class NuPayService {
       currentDateTime: currentDateTime
     };
 
-    console.log(`[Webfin API Request] Action: ${action} to ${this.apiUrl}`, JSON.stringify(payload));
+    // Redact credentials/signature from logs.
+    console.log(`[Webfin API Request] Action: ${action} to ${this.apiUrl}`, JSON.stringify({
+      ...payload,
+      username: '[REDACTED]',
+      hash: '[REDACTED]',
+    }));
 
     try {
       const response = await axios.post(this.apiUrl, payload, {
@@ -56,9 +61,19 @@ class NuPayService {
         throw new Error(response.data.error.message || `Webfin action failed: ${action}`);
       }
 
+      // When the gateway omits a reference we must NOT fabricate a random one —
+      // a random value masks failures and breaks idempotent replay. Derive a
+      // DETERMINISTIC synthetic reference from the exact request so the same
+      // request always yields the same reference, and flag it for reconciliation.
+      const provided = response.data && response.data.reference;
+      const synthetic = !provided;
+      const reference = provided
+        || 'WEBFIN-SYN-' + crypto.createHash('sha256').update(`${action}|${dataStr}`).digest('hex').slice(0, 12).toUpperCase();
+
       return {
         success: true,
-        reference: response.data.reference || `WEBFIN-REF-${Math.floor(Math.random() * 1000000)}`,
+        reference,
+        referenceSynthetic: synthetic,
         status: response.data.status || 'Pending Authentication',
         message: response.data.message || `Successfully executed ${action} via Webfin Gateway`
       };

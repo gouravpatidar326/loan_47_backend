@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -11,7 +12,9 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: [true, 'Please add an email'],
-      unique: true,
+      // Uniqueness is enforced per-tenant via a compound index (see below).
+      // A standalone non-unique index is kept for the global login lookup.
+      index: true,
       match: [
         /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
         'Please add a valid email',
@@ -96,9 +99,17 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 
 // Sign JWT and return
 userSchema.methods.getSignedJwtToken = function () {
-  return jwt.sign({ id: this._id, role: this.role }, process.env.JWT_SECRET, {
+  const payload = { id: this._id, role: this.role };
+  if (this.tenantId) payload.tenantId = String(this.tenantId);
+  return jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: '30d',
   });
 };
+
+userSchema.plugin(tenantPlugin);
+
+// Tenant-scoped uniqueness: the same email may exist across different tenants,
+// but must be unique within a single tenant.
+userSchema.index({ tenantId: 1, email: 1 }, { unique: true });
 
 module.exports = mongoose.model('User', userSchema);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const reminderHistorySchema = new mongoose.Schema({
   date: { type: Date, default: Date.now },
@@ -44,7 +45,11 @@ const duePaymentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound index to ensure one due payment record per installment
+duePaymentSchema.plugin(tenantPlugin);
+
+// One due payment record per installment (loanId is a globally-unique ObjectId).
 duePaymentSchema.index({ loanId: 1, installmentNumber: 1 }, { unique: true });
+// Powers overdue reporting / collections queries ("dueStatus + isDeleted").
+duePaymentSchema.index({ tenantId: 1, dueStatus: 1, isDeleted: 1 });
 
 module.exports = mongoose.model('DuePayment', duePaymentSchema);

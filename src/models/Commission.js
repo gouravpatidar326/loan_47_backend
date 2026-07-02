@@ -1,9 +1,10 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const commissionSchema = new mongoose.Schema({
   commissionCode: {
     type: String,
-    unique: true
+    // Uniqueness enforced per-tenant via a partial compound index (below).
   },
   agentId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -66,5 +67,13 @@ commissionSchema.pre('save', async function() {
     }
   }
 });
+
+commissionSchema.plugin(tenantPlugin);
+
+// Tenant-scoped uniqueness for the optional business code.
+commissionSchema.index(
+  { tenantId: 1, commissionCode: 1 },
+  { unique: true, partialFilterExpression: { commissionCode: { $type: 'string' } } }
+);
 
 module.exports = mongoose.model('Commission', commissionSchema);

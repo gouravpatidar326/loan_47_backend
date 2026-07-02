@@ -15,12 +15,15 @@ const {
 const { protect } = require('../middlewares/authMiddleware');
 const { authorize } = require('../middlewares/roleMiddleware');
 const upload = require('../middlewares/uploadMiddleware');
+const { enforceLimit } = require('../modules/saas/services/limitService');
 
 // Protect all routes - Admin only
 router.use(protect);
 router.use(authorize('admin'));
 
-router.post('/create', upload.single('profilePhoto'), createStaff);
+// enforceLimit blocks creation once the tenant's plan "Max Staff" is reached
+// (no-op for grandfathered/unlimited plans).
+router.post('/create', enforceLimit('staff'), upload.single('profilePhoto'), createStaff);
 router.get('/reviewers', getReviewers);
 router.get('/', getAllStaff);
 router.get('/:id', getStaff);

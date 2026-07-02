@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const creditReportSchema = new mongoose.Schema(
   {
@@ -78,5 +79,7 @@ const creditReportSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+creditReportSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('CreditReport', creditReportSchema);

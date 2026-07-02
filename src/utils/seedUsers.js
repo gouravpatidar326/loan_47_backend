@@ -1,7 +1,9 @@
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const User = require('../models/User');
+const Tenant = require('../models/Tenant');
 const connectDB = require('../config/db');
+const tenantContext = require('../tenancy/tenantContext');
 
 // Load env vars
 dotenv.config({ path: './.env' });
@@ -41,17 +43,32 @@ const seedUsers = async () => {
   try {
     await connectDB();
 
-    for (const u of users) {
-      const userExists = await User.findOne({ email: u.email });
-      if (userExists) {
-        console.log(`User ${u.email} already exists, updating password...`);
-        userExists.password = u.password;
-        await userExists.save();
-      } else {
-        await User.create(u);
-        console.log(`User ${u.email} created.`);
-      }
+    // Multi-tenant safety: resolve the default tenant and run all creation
+    // inside its context so the tenant plugin stamps tenantId on every seeded
+    // user. Without this, seeded users would have no tenantId and 403 on login.
+    const defaultTenant = await tenantContext.runAsSystem(() =>
+      Tenant.findOne({ isDefault: true })
+    );
+    if (!defaultTenant) {
+      console.error('❌ No default tenant found. Run `npm run migrate` first (creates the default tenant), then re-run the seeder.');
+      process.exit(1);
     }
+
+    await tenantContext.runWithTenant(defaultTenant._id, async () => {
+      for (const u of users) {
+        const userExists = await User.findOne({ email: u.email });
+        if (userExists) {
+          console.log(`User ${u.email} already exists, updating password...`);
+          userExists.password = u.password;
+          // Backfill tenantId on a pre-existing tenant-less seed user.
+          if (!userExists.tenantId) userExists.tenantId = defaultTenant._id;
+          await userExists.save();
+        } else {
+          await User.create(u); // plugin stamps tenantId from the active context
+          console.log(`User ${u.email} created (tenant ${defaultTenant._id}).`);
+        }
+      }
+    });
 
     console.log('✅ All users seeded successfully');
     process.exit();

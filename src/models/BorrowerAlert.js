@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const borrowerAlertSchema = new mongoose.Schema({
   borrowerId: {
@@ -31,5 +32,7 @@ const borrowerAlertSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+borrowerAlertSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('BorrowerAlert', borrowerAlertSchema);

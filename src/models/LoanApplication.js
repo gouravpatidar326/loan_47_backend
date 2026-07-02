@@ -1,10 +1,11 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const loanApplicationSchema = new mongoose.Schema(
   {
     applicationId: {
       type: String,
-      unique: true,
+      // Uniqueness enforced per-tenant via a compound index (below).
       required: true,
     },
     borrowerId: {
@@ -521,5 +522,14 @@ loanApplicationSchema.pre('validate', async function () {
 });
 
 
+
+loanApplicationSchema.plugin(tenantPlugin);
+
+// Tenant-scoped uniqueness (each tenant has its own applicationId sequence).
+loanApplicationSchema.index({ tenantId: 1, applicationId: 1 }, { unique: true });
+// Hot-path query indexes: dashboards/lists filter+sort by status over time and
+// look up applications per borrower. Additive — safe background builds.
+loanApplicationSchema.index({ tenantId: 1, status: 1, createdAt: -1 });
+loanApplicationSchema.index({ tenantId: 1, borrowerId: 1 });
 
 module.exports = mongoose.model('LoanApplication', loanApplicationSchema);

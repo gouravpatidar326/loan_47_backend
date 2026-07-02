@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const verificationLogSchema = new mongoose.Schema(
   {
@@ -59,7 +60,9 @@ const verificationLogSchema = new mongoose.Schema(
   }
 );
 
-// Compound index for easy lookups
-verificationLogSchema.index({ borrowerId: 1, verificationType: 1, createdAt: -1 });
+verificationLogSchema.plugin(tenantPlugin);
+
+// Tenant-prefixed compound index for verification lookups.
+verificationLogSchema.index({ tenantId: 1, borrowerId: 1, verificationType: 1, createdAt: -1 });
 
 module.exports = mongoose.model('VerificationLog', verificationLogSchema);

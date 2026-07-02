@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const reportSchema = new mongoose.Schema({
   reportTitle: { type: String, required: true },
@@ -28,5 +29,7 @@ const reportSchema = new mongoose.Schema({
 }, { 
   timestamps: true 
 });
+
+reportSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('Report', reportSchema);

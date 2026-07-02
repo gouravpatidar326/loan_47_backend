@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const bureauReportArchiveSchema = new mongoose.Schema(
   {
@@ -43,5 +44,7 @@ const bureauReportArchiveSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+bureauReportArchiveSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('BureauReportArchive', bureauReportArchiveSchema);

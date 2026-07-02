@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const followUpLogSchema = new mongoose.Schema({
   loanId: { type: mongoose.Schema.Types.ObjectId, ref: 'ActiveLoan', required: true },
@@ -28,5 +29,7 @@ const followUpLogSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+followUpLogSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('FollowUpLog', followUpLogSchema);

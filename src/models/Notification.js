@@ -1,11 +1,12 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const notificationSchema = new mongoose.Schema({
   notificationId: {
     type: String,
-    unique: true
+    // Uniqueness enforced per-tenant via a partial compound index (below).
   },
-  receiverId: { 
+  receiverId: {
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'User',
     required: true 
@@ -119,9 +120,16 @@ notificationSchema.pre('save', function() {
   }
 });
 
-// Add indexes for performance
-notificationSchema.index({ receiverId: 1, status: 1 });
-notificationSchema.index({ createdAt: -1 });
+notificationSchema.plugin(tenantPlugin);
+
+// Tenant-scoped performance indexes (replace the previous non-tenant ones).
+notificationSchema.index({ tenantId: 1, receiverId: 1, status: 1 });
+notificationSchema.index({ tenantId: 1, createdAt: -1 });
+// Tenant-scoped uniqueness for the optional business id.
+notificationSchema.index(
+  { tenantId: 1, notificationId: 1 },
+  { unique: true, partialFilterExpression: { notificationId: { $type: 'string' } } }
+);
 
 module.exports = mongoose.model('Notification', notificationSchema);
 

@@ -1,8 +1,11 @@
 const User = require('../models/User');
 const Borrower = require('../models/Borrower');
+const Tenant = require('../models/Tenant');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError } = require('../utils/responseHandler');
 const generateToken = require('../utils/generateToken');
+const tenantContext = require('../tenancy/tenantContext');
+const { healUserTenant, NO_TENANT_MESSAGE } = require('../tenancy/tenantHealing');
 
 // @desc    Register a new borrower
 // @route   POST /api/auth/register
@@ -19,6 +22,18 @@ exports.register = asyncHandler(async (req, res) => {
     return sendError(res, 'Passwords do not match', 400);
   }
 
+  // Public self-registration joins the default tenant (Milestone 1: single
+  // tenant). Resolve it in SYSTEM mode (Tenant is a platform collection).
+  const defaultTenant = await tenantContext.runAsSystem(() =>
+    Tenant.findOne({ isDefault: true })
+  );
+  if (!defaultTenant) {
+    return sendError(res, 'Tenant not configured. Please contact support.', 500);
+  }
+
+  // Run the whole registration inside the tenant context so created records
+  // (User, Borrower, Notification) are stamped with the correct tenantId.
+  return tenantContext.runWithTenant(defaultTenant._id, async () => {
   // Check if user exists
   const userExists = await User.findOne({ email });
   if (userExists) {
@@ -58,7 +73,7 @@ exports.register = asyncHandler(async (req, res) => {
       console.error('Failed to log borrower registration notification:', notifErr.message);
     }
 
-    const token = generateToken(user._id, user.role);
+    const token = generateToken(user._id, user.role, defaultTenant._id);
 
     sendSuccess(res, 'Borrower registered successfully', {
       user: {
@@ -76,6 +91,7 @@ exports.register = asyncHandler(async (req, res) => {
   } else {
     sendError(res, 'Invalid user data', 400);
   }
+  }); // end runWithTenant (default tenant)
 });
 
 // @desc    Authenticate user & get token
@@ -89,8 +105,12 @@ exports.login = asyncHandler(async (req, res) => {
     return sendError(res, 'Please provide email, password and role', 400);
   }
 
-  // Check for user
-  const user = await User.findOne({ email }).select('+password');
+  // Check for user. Login is pre-tenant (we don't yet know which tenant the
+  // user belongs to), so resolve in SYSTEM mode. The tenant is then taken from
+  // the user's own record and embedded in the issued token.
+  const user = await tenantContext.runAsSystem(() =>
+    User.findOne({ email }).select('+password')
+  );
 
   if (!user) {
     return sendError(res, 'Invalid credentials', 401);
@@ -133,7 +153,18 @@ exports.login = asyncHandler(async (req, res) => {
     return sendError(res, 'Your account is blacklisted.', 403);
   }
 
-  const token = generateToken(user._id, user.role);
+  // Self-healing: a user created before the multi-tenant migration (or via a
+  // seeder/import/manual insert) may have no tenantId. Rather than letting every
+  // subsequent request 403, assign the unambiguous tenant once, here at login.
+  if (!user.tenantId) {
+    const heal = await healUserTenant(user);
+    if (!heal.healed && !heal.alreadyScoped) {
+      // Ambiguous (multiple tenants) or no tenant — never a generic 403.
+      return sendError(res, heal.reason || NO_TENANT_MESSAGE, 403);
+    }
+  }
+
+  const token = generateToken(user._id, user.role, user.tenantId);
 
   sendSuccess(res, 'Login successful', {
     user: {

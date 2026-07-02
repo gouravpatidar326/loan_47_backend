@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendError } = require('../utils/responseHandler');
 const User = require('../models/User');
+const tenantContext = require('../tenancy/tenantContext');
 
 const protect = async (req, res, next) => {
   try {
@@ -28,7 +29,10 @@ const protect = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    req.user = await User.findById(decoded.id);
+    // Resolve the user in SYSTEM mode: we do not yet have a tenant context, and
+    // the lookup is what tells us which tenant the user belongs to. This avoids
+    // the fail-closed plugin throwing during auth bootstrap.
+    req.user = await tenantContext.runAsSystem(() => User.findById(decoded.id));
 
     if (!req.user) {
         return sendError(res, 'User not found', 404);
@@ -39,7 +43,26 @@ const protect = async (req, res, next) => {
       return sendError(res, 'Your account has been suspended', 403);
     }
 
-    next();
+    // Tenant is ALWAYS resolved from the database record (authoritative source),
+    // never trusted from the request. Works for both new tokens (which also
+    // carry tenantId) and legacy tokens issued before tenant support existed.
+    let tenantId = req.user.tenantId;
+    if (!tenantId) {
+      // Self-heal a tenant-less account (legacy/seeded/imported) ONCE, instead
+      // of permanently 403-ing valid logins. Only succeeds when the tenant is
+      // unambiguous; otherwise a meaningful (non-generic) error is returned.
+      const { healUserTenant, NO_TENANT_MESSAGE } = require('../tenancy/tenantHealing');
+      const heal = await healUserTenant(req.user);
+      if (!heal.healed) {
+        return sendError(res, heal.reason || NO_TENANT_MESSAGE, 403);
+      }
+      tenantId = req.user.tenantId;
+    }
+    req.tenantId = tenantId;
+
+    // Run the remainder of the request pipeline inside the tenant context so
+    // every tenant-scoped query downstream is filtered automatically.
+    return tenantContext.runWithTenant(tenantId, () => next());
   } catch (err) {
     console.error('Auth Middleware Error:', err.message);
     return sendError(res, 'Not authorized: Invalid or expired token', 401);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const loanActivitySchema = new mongoose.Schema({
   loanId: {
@@ -28,8 +29,10 @@ const loanActivitySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for faster queries
-loanActivitySchema.index({ loanId: 1, createdAt: -1 });
-loanActivitySchema.index({ borrowerId: 1, createdAt: -1 });
+loanActivitySchema.plugin(tenantPlugin);
+
+// Tenant-prefixed activity timelines.
+loanActivitySchema.index({ tenantId: 1, loanId: 1, createdAt: -1 });
+loanActivitySchema.index({ tenantId: 1, borrowerId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('LoanActivity', loanActivitySchema);

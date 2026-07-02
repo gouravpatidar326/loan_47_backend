@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const paymentSchema = new mongoose.Schema({
   borrowerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Borrower', required: true },
@@ -9,7 +10,7 @@ const paymentSchema = new mongoose.Schema({
   loanId: { type: mongoose.Schema.Types.ObjectId, ref: 'ActiveLoan', required: true },
   loanCode: { type: String, required: true },
 
-  transactionId: { type: String, required: true, unique: true },
+  transactionId: { type: String, required: true }, // uniqueness enforced per-tenant (see below)
 
   paymentAmount: { type: Number, required: true },
   paymentDate: { type: Date, required: true },
@@ -66,5 +67,13 @@ paymentSchema.pre('validate', async function() {
     }
   }
 });
+
+paymentSchema.plugin(tenantPlugin);
+
+// Tenant-scoped uniqueness (each tenant has its own NuPay merchant account).
+paymentSchema.index({ tenantId: 1, transactionId: 1 }, { unique: true });
+// Hot-path: payment verification queues and per-loan/borrower payment history.
+paymentSchema.index({ tenantId: 1, paymentStatus: 1, createdAt: -1 });
+paymentSchema.index({ tenantId: 1, loanId: 1 });
 
 module.exports = mongoose.model('Payment', paymentSchema);

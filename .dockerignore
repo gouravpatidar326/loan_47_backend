@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+.env
+.env.*
+storage/backups
+.git
+.gitignore
+*.md
+_*.js
+test_bank.js
+coverage
+.DS_Store

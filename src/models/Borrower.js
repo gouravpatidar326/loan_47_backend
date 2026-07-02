@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 const bcrypt = require('bcryptjs');
 
 const borrowerSchema = new mongoose.Schema(
@@ -10,13 +11,12 @@ const borrowerSchema = new mongoose.Schema(
     },
     idNumber: {
       type: String,
-      unique: true,
-      sparse: true, // Allow multiple nulls for unique field
+      // Uniqueness enforced per-tenant via a partial compound index (below).
     },
     email: {
       type: String,
       required: [true, 'Please add an email'],
-      unique: true,
+      // Uniqueness enforced per-tenant via a compound index (below).
       match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please add a valid email'],
     },
     phoneNumber: {
@@ -91,7 +91,7 @@ const borrowerSchema = new mongoose.Schema(
     // SYSTEM FIELDS
     borrowerCode: {
       type: String,
-      unique: true,
+      // Uniqueness enforced per-tenant via a partial compound index (below).
     },
     accountStatus: {
       type: String,
@@ -178,5 +178,19 @@ borrowerSchema.pre('save', async function () {
     this.borrowerCode = `BRW-${nextNumber}`;
   }
 });
+
+borrowerSchema.plugin(tenantPlugin);
+
+// Tenant-scoped uniqueness. Optional fields use a partial filter so multiple
+// documents without the field remain allowed within a tenant.
+borrowerSchema.index({ tenantId: 1, email: 1 }, { unique: true });
+borrowerSchema.index(
+  { tenantId: 1, idNumber: 1 },
+  { unique: true, partialFilterExpression: { idNumber: { $type: 'string' } } }
+);
+borrowerSchema.index(
+  { tenantId: 1, borrowerCode: 1 },
+  { unique: true, partialFilterExpression: { borrowerCode: { $type: 'string' } } }
+);
 
 module.exports = mongoose.model('Borrower', borrowerSchema);

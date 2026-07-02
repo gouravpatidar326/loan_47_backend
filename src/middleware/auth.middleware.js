@@ -5,6 +5,7 @@
 
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const tenantContext = require('../tenancy/tenantContext');
 
 /**
  * Secures verification initiation endpoints against unauthorized access
@@ -31,8 +32,9 @@ const protectVerification = async (req, res, next) => {
     // Verify token expiration and payload validation
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'point47_super_secret_key');
 
-    // Retrieve active user profile
-    req.user = await User.findById(decoded.id);
+    // Retrieve active user profile in SYSTEM mode (auth bootstrap — tenant not
+    // yet established), then resolve tenant from the DB record.
+    req.user = await tenantContext.runAsSystem(() => User.findById(decoded.id));
 
     if (!req.user) {
       return res.status(404).json({
@@ -48,8 +50,21 @@ const protectVerification = async (req, res, next) => {
       });
     }
 
-    // Hand off to controller
-    next();
+    if (!req.user.tenantId) {
+      // Self-heal a tenant-less account once (unambiguous tenant only).
+      const { healUserTenant, NO_TENANT_MESSAGE } = require('../tenancy/tenantHealing');
+      const heal = await healUserTenant(req.user);
+      if (!heal.healed) {
+        return res.status(403).json({
+          success: false,
+          message: heal.reason || NO_TENANT_MESSAGE
+        });
+      }
+    }
+    req.tenantId = req.user.tenantId;
+
+    // Hand off to controller inside the tenant context.
+    return tenantContext.runWithTenant(req.user.tenantId, () => next());
   } catch (error) {
     console.error('❌ [Auth Verification Middleware Error]:', error.message);
     return res.status(401).json({

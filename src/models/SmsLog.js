@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const smsLogSchema = new mongoose.Schema({
   phoneNumber: {
@@ -41,5 +42,7 @@ const smsLogSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+smsLogSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('SmsLog', smsLogSchema);

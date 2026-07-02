@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const conversationSchema = new mongoose.Schema({
   participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
@@ -20,5 +21,7 @@ const conversationSchema = new mongoose.Schema({
   isBroadcast: { type: Boolean, default: false },
   isDeleted: { type: Boolean, default: false }
 }, { timestamps: true });
+
+conversationSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('Conversation', conversationSchema);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const loanReviewSchema = new mongoose.Schema({
   loanApplicationId: {
@@ -28,5 +29,7 @@ const loanReviewSchema = new mongoose.Schema({
     type: String
   }
 }, { timestamps: true });
+
+loanReviewSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('LoanReview', loanReviewSchema);

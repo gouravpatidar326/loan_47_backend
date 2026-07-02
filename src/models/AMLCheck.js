@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const amlCheckSchema = new mongoose.Schema(
   {
@@ -58,5 +59,7 @@ const amlCheckSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+amlCheckSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('AMLCheck', amlCheckSchema);

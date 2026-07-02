@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const agentClientActivitySchema = new mongoose.Schema({
   borrowerId: {
@@ -35,5 +36,7 @@ const agentClientActivitySchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+agentClientActivitySchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('AgentClientActivity', agentClientActivitySchema);

@@ -4,10 +4,13 @@ const jwt = require('jsonwebtoken');
  * Generates a JWT token
  * @param {string} id - User ID
  * @param {string} role - User role
+ * @param {string} [tenantId] - Tenant the user belongs to (optional)
  * @returns {string} Signed JWT token
  */
-const generateToken = (id, role) => {
-  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
+const generateToken = (id, role, tenantId) => {
+  const payload = { id, role };
+  if (tenantId) payload.tenantId = String(tenantId);
+  return jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: '30d',
   });
 };

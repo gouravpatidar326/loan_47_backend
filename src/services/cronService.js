@@ -4,18 +4,35 @@ const Notification = require('../models/Notification');
 const LoanActivity = require('../models/LoanActivity');
 const Borrower = require('../models/Borrower');
 const BorrowerAlert = require('../models/BorrowerAlert');
+const Tenant = require('../models/Tenant');
 const { createNotification } = require('../utils/notificationHelper');
 const { getIO } = require('../socket/socketServer');
+const tenantContext = require('../tenancy/tenantContext');
 
 /**
  * Initialize all cron jobs
+ *
+ * MILESTONE 1 SCOPE: this background job runs inside the DEFAULT tenant's
+ * context so its reads are correctly scoped and the records it creates
+ * (notifications / alerts / activities) are stamped with the right tenantId.
+ * When multiple tenants exist (later milestone), this should iterate over all
+ * active tenants and run the checks once per tenant.
  */
 const initCronJobs = () => {
   // Run every day at 00:00 (Midnight)
   cron.schedule('0 0 * * *', async () => {
     console.log('Running EMI Reminder Cron Job...');
-    await checkUpcomingEMIs();
-    await checkOverdueEMIs();
+    const defaultTenant = await tenantContext.runAsSystem(() =>
+      Tenant.findOne({ isDefault: true })
+    );
+    if (!defaultTenant) {
+      console.error('[Cron] No default tenant found — skipping EMI reminder job.');
+      return;
+    }
+    await tenantContext.runWithTenant(defaultTenant._id, async () => {
+      await checkUpcomingEMIs();
+      await checkOverdueEMIs();
+    });
   });
 };
 

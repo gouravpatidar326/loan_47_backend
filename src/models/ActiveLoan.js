@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const repaymentScheduleSchema = new mongoose.Schema({
   installmentNumber: { type: Number, required: true },
@@ -23,7 +24,7 @@ const activeLoanSchema = new mongoose.Schema({
   borrowerPhone: { type: String },
   
   loanApplicationId: { type: mongoose.Schema.Types.ObjectId, ref: 'LoanApplication', required: true },
-  loanCode: { type: String, required: true, unique: true },
+  loanCode: { type: String, required: true }, // uniqueness enforced per-tenant (see below)
   
   loanType: { type: String },
   approvedAmount: { type: Number, required: true },
@@ -127,5 +128,12 @@ activeLoanSchema.pre('validate', async function() {
     }
   }
 });
+
+activeLoanSchema.plugin(tenantPlugin);
+
+// Tenant-scoped uniqueness.
+activeLoanSchema.index({ tenantId: 1, loanCode: 1 }, { unique: true });
+// Hot-path: active-loan lists/dashboards filter by status and soft-delete flag.
+activeLoanSchema.index({ tenantId: 1, loanStatus: 1, isDeleted: 1 });
 
 module.exports = mongoose.model('ActiveLoan', activeLoanSchema);

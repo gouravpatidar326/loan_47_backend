@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 const bcrypt = require('bcryptjs');
 
 const agentSchema = new mongoose.Schema(
@@ -16,7 +17,7 @@ const agentSchema = new mongoose.Schema(
     email: {
       type: String,
       required: [true, 'Please add an email'],
-      unique: true,
+      // Uniqueness enforced per-tenant via a compound index (below).
       match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please add a valid email'],
     },
     password: {
@@ -27,14 +28,14 @@ const agentSchema = new mongoose.Schema(
     phoneNumber: {
       type: String,
       required: [true, 'Please add a phone number'],
-      unique: true,
+      // Uniqueness enforced per-tenant via a compound index (below).
     },
 
     // Personal Details
     idNumber: {
       type: String,
       required: [true, 'Please add an ID number'],
-      unique: true,
+      // Uniqueness enforced per-tenant via a compound index (below).
     },
     physicalAddress: {
       type: String,
@@ -64,7 +65,7 @@ const agentSchema = new mongoose.Schema(
     },
     employeeId: {
       type: String,
-      unique: true,
+      // Uniqueness enforced per-tenant via a partial compound index (below).
     },
     role: {
       type: String,
@@ -169,6 +170,17 @@ agentSchema.pre('save', async function () {
   }
 });
 
+
+agentSchema.plugin(tenantPlugin);
+
+// Tenant-scoped uniqueness.
+agentSchema.index({ tenantId: 1, email: 1 }, { unique: true });
+agentSchema.index({ tenantId: 1, phoneNumber: 1 }, { unique: true });
+agentSchema.index({ tenantId: 1, idNumber: 1 }, { unique: true });
+agentSchema.index(
+  { tenantId: 1, employeeId: 1 },
+  { unique: true, partialFilterExpression: { employeeId: { $type: 'string' } } }
+);
 
 module.exports = mongoose.model('Agent', agentSchema);
 

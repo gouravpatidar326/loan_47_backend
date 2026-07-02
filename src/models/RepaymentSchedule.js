@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const repaymentScheduleSchema = new mongoose.Schema({
   loanId: {
@@ -44,10 +45,14 @@ const repaymentScheduleSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for faster queries
+repaymentScheduleSchema.plugin(tenantPlugin);
+
+// Index for faster queries. loanId is a globally-unique ObjectId so the
+// {loanId, emiNumber} unique constraint is already tenant-safe. The remaining
+// lookups are tenant-prefixed because every query is tenant-scoped.
 repaymentScheduleSchema.index({ loanId: 1, emiNumber: 1 }, { unique: true });
-repaymentScheduleSchema.index({ borrowerId: 1 });
-repaymentScheduleSchema.index({ dueDate: 1 });
-repaymentScheduleSchema.index({ status: 1 });
+repaymentScheduleSchema.index({ tenantId: 1, borrowerId: 1 });
+// Powers the daily EMI cron ("status + dueDate range").
+repaymentScheduleSchema.index({ tenantId: 1, status: 1, dueDate: 1 });
 
 module.exports = mongoose.model('RepaymentSchedule', repaymentScheduleSchema);

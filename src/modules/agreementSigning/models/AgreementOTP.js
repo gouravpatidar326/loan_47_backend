@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../../../tenancy/tenantPlugin');
 
 const agreementOTPSchema = new mongoose.Schema(
   {
@@ -41,5 +42,7 @@ const agreementOTPSchema = new mongoose.Schema(
 // TTL index to automatically remove expired OTPs from the database if desired, 
 // though we will also handle expiry programmatically.
 agreementOTPSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+agreementOTPSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('AgreementOTP', agreementOTPSchema);

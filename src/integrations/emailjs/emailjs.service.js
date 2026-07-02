@@ -35,13 +35,23 @@ const sendOtpEmail = async (toEmail, userName, otpCode, agreementNumber) => {
       // intentionally hiding accessToken from logs
     }, null, 2));
     
-    const response = await fetch(config.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    // Bound the request — fetch has no default timeout, so a hung EmailJS
+    // endpoint would otherwise stall the OTP flow indefinitely.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let response;
+    try {
+      response = await fetch(config.apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const responseText = await response.text();
 

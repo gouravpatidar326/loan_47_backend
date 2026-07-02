@@ -1,0 +1,63 @@
+name: Release & Deploy
+
+# Manual, gated deployment with version tagging and a rollback path.
+# Deployment steps are intentionally left as documented placeholders — wire them
+# to your host (Railway / Fly / VPS / ECS) by filling the marked `run:` blocks
+# and adding the corresponding repository secrets. Nothing here runs on push.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options: [staging, production]
+      version:
+        description: 'Semver tag to release (e.g. v1.2.0)'
+        required: true
+        type: string
+      rollback:
+        description: 'Rollback to a previously released version instead of deploying'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.version }} to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag release
+        if: ${{ inputs.rollback == false }}
+        run: |
+          git tag -f "${{ inputs.version }}"
+          git push -f origin "${{ inputs.version }}"
+
+      - name: Build & push image
+        if: ${{ inputs.rollback == false }}
+        run: |
+          echo "TODO: docker build + push to your registry, tagged ${{ inputs.version }}"
+          # docker build -t $REGISTRY/point47-lms-backend:${{ inputs.version }} .
+          # echo "$REGISTRY_TOKEN" | docker login -u "$REGISTRY_USER" --password-stdin $REGISTRY
+          # docker push $REGISTRY/point47-lms-backend:${{ inputs.version }}
+
+      - name: Deploy
+        if: ${{ inputs.rollback == false }}
+        run: |
+          echo "TODO: trigger deploy of ${{ inputs.version }} to ${{ inputs.environment }}"
+          # e.g. railway up --service backend  OR  ssh host 'docker compose pull && docker compose up -d'
+
+      - name: Rollback
+        if: ${{ inputs.rollback == true }}
+        run: |
+          echo "TODO: redeploy previously released image tagged ${{ inputs.version }}"
+          # docker compose down && IMAGE_TAG=${{ inputs.version }} docker compose up -d
+
+      - name: Smoke test (readiness probe)
+        run: |
+          echo "TODO: curl -fsS https://<host>/api/health/ready expecting 200"

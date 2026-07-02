@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const messageSchema = new mongoose.Schema({
   conversationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', required: true },
@@ -29,5 +30,7 @@ const messageSchema = new mongoose.Schema({
   sentAt: { type: Date, default: Date.now },
   isDeleted: { type: Boolean, default: false }
 }, { timestamps: true });
+
+messageSchema.plugin(tenantPlugin);
 
 module.exports = mongoose.model('Message', messageSchema);

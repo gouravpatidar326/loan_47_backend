@@ -9,6 +9,7 @@ const settings = require('../controllers/settingsController');
 const audit = require('../controllers/auditController');
 const notifications = require('../controllers/notificationController');
 const platformUsers = require('../controllers/platformUserController');
+const leads = require('../controllers/leadController');
 
 // ---- Public ----
 router.post('/auth/login', auth.login);
@@ -33,6 +34,10 @@ router.put('/tenants/:id', requirePermission('MANAGE_TENANTS'), tenants.update);
 router.patch('/tenants/:id/suspend', requirePermission('MANAGE_TENANTS'), tenants.suspend);
 router.patch('/tenants/:id/activate', requirePermission('MANAGE_TENANTS'), tenants.activate);
 router.delete('/tenants/:id', requirePermission('MANAGE_TENANTS'), tenants.remove);
+
+// Leads (tenant onboarding / signup pipeline)
+router.get('/leads/stats', requirePermission('MANAGE_TENANTS'), leads.stats);
+router.get('/leads', requirePermission('MANAGE_TENANTS'), leads.list);
 
 // Global settings
 router.get('/settings', requirePermission('MANAGE_GLOBAL_SETTINGS'), settings.get);

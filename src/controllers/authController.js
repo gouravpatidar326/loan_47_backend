@@ -51,24 +51,30 @@ exports.register = asyncHandler(async (req, res) => {
 
   if (user) {
     // Create borrower profile (linked to user)
-    const borrowerProfile = await Borrower.create({ 
+    const borrowerProfile = await Borrower.create({
       userId: user._id,
       fullName: user.fullName,
       email: user.email,
       phoneNumber: user.phone,
+      password, // Borrower schema requires a password; hashed by its pre-save hook.
       accountStatus: 'Active'
     });
 
-    // Create admin real-time notification
+    // Notify each admin in the tenant that a new borrower registered.
+    // (Notifications require a receiverId, so we fan out one per admin.)
     try {
       const { createNotification } = require('../utils/notificationHelper');
-      await createNotification({
+      const admins = await User.find({ role: 'admin' }).select('_id').lean();
+      await Promise.all(admins.map((admin) => createNotification({
+        receiverId: admin._id,
+        receiverRole: 'admin',
         title: 'Borrower Registered',
         message: `A new borrower profile has been registered for ${user.fullName}.`,
-        notificationType: 'Borrower Registered',
-        priority: 'Normal',
-        borrowerId: borrowerProfile._id
-      });
+        notificationType: 'ADMIN_ALERT',
+        priority: 'NORMAL',
+        relatedId: borrowerProfile._id,
+        relatedModel: 'Borrower',
+      })));
     } catch (notifErr) {
       console.error('Failed to log borrower registration notification:', notifErr.message);
     }

@@ -60,6 +60,22 @@ const protect = async (req, res, next) => {
     }
     req.tenantId = tenantId;
 
+    // Check if tenant is active/suspended
+    const Tenant = require('../models/Tenant');
+    const tenant = await tenantContext.runAsSystem(() => Tenant.findById(tenantId));
+    if (!tenant) {
+      return sendError(res, 'Tenant account not found', 404);
+    }
+    if (tenant.status === 'suspended') {
+      return sendError(res, 'Your organization account has been suspended. Please contact support.', 403);
+    }
+    if (tenant.status === 'disabled') {
+      return sendError(res, 'Your organization account is disabled.', 403);
+    }
+    if (tenant.status === 'expired') {
+      return sendError(res, 'Your organization subscription has expired.', 403);
+    }
+
     // Run the remainder of the request pipeline inside the tenant context so
     // every tenant-scoped query downstream is filtered automatically.
     return tenantContext.runWithTenant(tenantId, () => next());

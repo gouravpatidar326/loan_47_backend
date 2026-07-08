@@ -9,6 +9,7 @@ const { createNotification } = require('../../../utils/notificationHelper');
 const BorrowerAlert = require('../../../models/BorrowerAlert');
 const LoanActivity = require('../../../models/LoanActivity');
 const { getIO } = require('../../../socket/socketServer');
+const tokenService = require('../../../modules/commerce/services/tokenService');
 
 /**
  * Generate Loan Agreement
@@ -106,6 +107,16 @@ const sendAgreementOTP = async (loanApplicationId, requestUser) => {
   console.log(`[AgreementService] OTP generated successfully for borrower ${borrowerUser._id}. Expiration: ${otpRecord.expiresAt}`);
 
   try {
+    const tenantId = application.tenantId;
+
+    // Charge for email OTP
+    const emailIdemKey = `idem-otp-email-${application._id}-${otpRecord.otpCode}`;
+    await tokenService.charge(tenantId, 'email', {
+      actor: borrowerUser._id,
+      idempotencyKey: emailIdemKey,
+      metadata: { applicationId: application._id }
+    });
+
     // Send EmailJS request
     await sendOtpEmail(
       application.emailAddress, 
@@ -119,9 +130,17 @@ const sendAgreementOTP = async (loanApplicationId, requestUser) => {
     if (application.phoneNumber) {
       // Don't wait for it to block the main flow, or wrap in a generic try-catch to avoid failing the whole process if SMS fails
       try {
+        // Charge for SMS OTP
+        const smsIdemKey = `idem-otp-sms-${application._id}-${otpRecord.otpCode}`;
+        await tokenService.charge(tenantId, 'sms', {
+          actor: borrowerUser._id,
+          idempotencyKey: smsIdemKey,
+          metadata: { applicationId: application._id }
+        });
+
         await sendOtpSms(application.phoneNumber, otpRecord.otpCode, application.applicationId);
       } catch (smsError) {
-        console.error(`[AgreementService] Non-fatal: SMS dispatch failed to ${application.phoneNumber}: ${smsError.message}`);
+        console.error(`[AgreementService] Non-fatal: SMS dispatch or token charge failed to ${application.phoneNumber}: ${smsError.message}`);
       }
     }
 

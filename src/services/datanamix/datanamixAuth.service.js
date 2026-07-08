@@ -1,31 +1,38 @@
 const axios = require('axios');
+const tenantContext = require('../../tenancy/tenantContext');
+const credentialService = require('../../modules/saas/services/credentialService');
 
-// ─── In-memory token state ───────────────────────────────────────────────────
-let accessToken = null;
-let tokenExpiry = null;
-let lastExpiresIn = 14399;
-let isRefreshing = false;
+// ─── In-memory token state cached per tenant ──────────────────────────────────
+// Maps tenantId -> { accessToken, tokenExpiry, lastExpiresIn }
+const tokenCache = new Map();
 
 const RETRY_COUNT = 3;
 const RETRY_DELAY_MS = 3000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// ─── isTokenExpired ───────────────────────────────────────────────────────────
-const isTokenExpired = () => {
-  if (!accessToken || !tokenExpiry) return true;
-  return Date.now() >= tokenExpiry;
-};
+// ─── loginToDatanamix (OAuth2 Client Credentials per tenant) ──────────────────
+const loginToDatanamix = async (tenantId) => {
+  let clientId = process.env.DATANAMIX_CLIENT_ID;
+  let clientSecret = process.env.DATANAMIX_CLIENT_SECRET;
+  let baseUrl = (process.env.DATANAMIX_BASE_URL || 'https://api.datanamix.com').replace(/\/$/, '');
 
-// ─── loginToDatanamix (OAuth2 Client Credentials) ────────────────────────────
-const loginToDatanamix = async () => {
-  const clientId = process.env.DATANAMIX_CLIENT_ID;
-  const clientSecret = process.env.DATANAMIX_CLIENT_SECRET;
-  const baseUrl = (process.env.DATANAMIX_BASE_URL || 'https://api.datanamix.com').replace(/\/$/, '');
+  const activeTenantId = tenantId || tenantContext.getTenantId();
+  if (activeTenantId) {
+    const resolved = await credentialService.resolve(activeTenantId, 'datanamix');
+    if (resolved && resolved.source === 'tenant') {
+      const creds = resolved.credentials || {};
+      clientId = creds.clientId || clientId;
+      clientSecret = creds.clientSecret || clientSecret;
+      baseUrl = (creds.baseUrl || baseUrl).replace(/\/$/, '');
+    } else if (process.env.NODE_ENV === 'production' && resolved.source === 'env') {
+      throw new Error('Datanamix credentials are not configured for this tenant in production.');
+    }
+  }
 
   if (!clientId || !clientSecret) {
     throw new Error(
-      'DATANAMIX_CLIENT_ID and DATANAMIX_CLIENT_SECRET must be set in .env'
+      'DATANAMIX_CLIENT_ID and DATANAMIX_CLIENT_SECRET must be set in .env or tenant settings'
     );
   }
 
@@ -54,28 +61,35 @@ const loginToDatanamix = async () => {
 };
 
 // ─── refreshToken ─────────────────────────────────────────────────────────────
-const refreshToken = async () => {
-  isRefreshing = true;
+const refreshToken = async (tenantId) => {
+  const activeTenantId = tenantId || tenantContext.getTenantId() || 'global';
   try {
-    const { access_token, expires_in } = await loginToDatanamix();
-    accessToken = access_token;
-    lastExpiresIn = expires_in;
+    const { access_token, expires_in } = await loginToDatanamix(activeTenantId);
+    
     // Refresh 60 seconds before actual expiry
-    tokenExpiry = Date.now() + (expires_in - 60) * 1000;
-    isRefreshing = false;
-    return accessToken;
+    const expiryTime = Date.now() + (expires_in - 60) * 1000;
+    tokenCache.set(activeTenantId, {
+      accessToken: access_token,
+      tokenExpiry: expiryTime,
+      lastExpiresIn: expires_in
+    });
+    
+    return access_token;
   } catch (error) {
-    isRefreshing = false;
     throw error;
   }
 };
 
 // ─── getAccessToken ───────────────────────────────────────────────────────────
-const getAccessToken = async () => {
-  if (accessToken && !isTokenExpired()) {
-    return accessToken;
+const getAccessToken = async (tenantId) => {
+  const activeTenantId = tenantId || tenantContext.getTenantId() || 'global';
+  const cached = tokenCache.get(activeTenantId);
+  const isExpired = !cached || Date.now() >= cached.tokenExpiry;
+
+  if (cached && cached.accessToken && !isExpired) {
+    return cached.accessToken;
   }
-  return refreshToken();
+  return refreshToken(activeTenantId);
 };
 
 // ─── initializeDatanamixAuth ──────────────────────────────────────────────────
@@ -84,12 +98,9 @@ const initializeDatanamixAuth = async () => {
 
   while (attempts < RETRY_COUNT) {
     try {
-      console.log(`[Datanamix] Authentication attempt ${attempts + 1}/${RETRY_COUNT}...`);
-      await refreshToken();
-      console.log('[Datanamix] Authentication successful');
-      console.log('[Datanamix] OAuth token initialized');
-      console.log(`[Datanamix] Token expires in ${lastExpiresIn} seconds`);
-      console.log('[Datanamix] Auto-refresh enabled');
+      console.log(`[Datanamix] Global authentication attempt ${attempts + 1}/${RETRY_COUNT}...`);
+      await refreshToken('global');
+      console.log('[Datanamix] Global authentication successful');
       return;
     } catch (error) {
       attempts++;
@@ -111,6 +122,5 @@ module.exports = {
   loginToDatanamix,
   getAccessToken,
   refreshToken,
-  isTokenExpired,
   initializeDatanamixAuth,
 };

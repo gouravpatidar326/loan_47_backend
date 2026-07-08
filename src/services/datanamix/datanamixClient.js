@@ -1,11 +1,13 @@
 const axios = require('axios');
 const { getAccessToken, refreshToken } = require('./datanamixAuth.service');
+const tenantContext = require('../../tenancy/tenantContext');
+const credentialService = require('../../modules/saas/services/credentialService');
 
-const BASE_URL = (process.env.DATANAMIX_BASE_URL || 'https://api.datanamix.com').replace(/\/$/, '');
+const DEFAULT_BASE_URL = (process.env.DATANAMIX_BASE_URL || 'https://api.datanamix.com').replace(/\/$/, '');
 
 // ─── Axios instance ───────────────────────────────────────────────────────────
 const datanamixAxiosClient = axios.create({
-  baseURL: BASE_URL,
+  baseURL: DEFAULT_BASE_URL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -16,7 +18,22 @@ const datanamixAxiosClient = axios.create({
 // ─── Request interceptor — inject Bearer token automatically ─────────────────
 datanamixAxiosClient.interceptors.request.use(
   async (config) => {
-    const token = await getAccessToken();
+    const tenantId = tenantContext.getTenantId();
+    
+    // Resolve dynamic Base URL if tenant settings exist
+    if (tenantId) {
+      const resolved = await credentialService.resolve(tenantId, 'datanamix');
+      if (resolved && resolved.source === 'tenant') {
+        const creds = resolved.credentials || {};
+        if (creds.baseUrl) {
+          config.baseURL = creds.baseUrl.replace(/\/$/, '');
+        }
+      }
+    } else {
+      config.baseURL = DEFAULT_BASE_URL;
+    }
+
+    const token = await getAccessToken(tenantId);
     config.headers['Authorization'] = `Bearer ${token}`;
     return config;
   },
@@ -43,12 +60,13 @@ datanamixAxiosClient.interceptors.response.use(
 
     if (isAuthError && !originalRequest._retried) {
       originalRequest._retried = true;
+      const tenantId = tenantContext.getTenantId();
 
       try {
         console.log(
           '[Datanamix Client] Auth error detected — refreshing token and retrying request...'
         );
-        const newToken = await refreshToken();
+        const newToken = await refreshToken(tenantId);
         originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
         return datanamixAxiosClient(originalRequest);
       } catch (refreshError) {

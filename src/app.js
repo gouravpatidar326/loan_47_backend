@@ -113,6 +113,7 @@ const limiter = rateLimit({
   max: 2000, // Increased scale to support rapid real-time message flows and dashboard syncing
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: 'Too many requests from this IP, please try again after 10 minutes'
 });
 app.use(limiter);
@@ -122,6 +123,7 @@ const authLimiter = rateLimit({
   max: 30, // generous enough for legitimate retries, low enough to blunt brute force
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: 'Too many authentication attempts, please try again later',
 });
 app.use('/api/auth', authLimiter);

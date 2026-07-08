@@ -1,5 +1,7 @@
 const axios = require('axios');
 const SmsLog = require('../../models/SmsLog');
+const tenantContext = require('../../tenancy/tenantContext');
+const credentialService = require('../../modules/saas/services/credentialService');
 
 /**
  * Normalizes a phone number to strict E.164-like digit-only format.
@@ -131,12 +133,29 @@ const sendOtpSms = async (phoneNumber, otpCode, agreementNumber) => {
   }
 
   // 3. Environment Variables Validation
-  const baseUrl = process.env.BULKSMS_BASE_URL || 'https://api.bulksms.com/v1';
-  const apiUrl = `${baseUrl}/messages`;
-  
-  // Resolve Authorization Token
+  let baseUrl = process.env.BULKSMS_BASE_URL || 'https://api.bulksms.com/v1';
   let authToken = process.env.SMS_AUTH_TOKEN;
   let authMethod = 'Basic Auth (Pre-constructed)';
+
+  const tenantId = tenantContext.getTenantId();
+  if (tenantId) {
+    const resolved = await credentialService.resolve(tenantId, 'bulksms');
+    if (resolved && resolved.source === 'tenant') {
+      const creds = resolved.credentials || {};
+      baseUrl = creds.baseUrl || baseUrl;
+      if (creds.token) {
+        authToken = creds.token;
+        authMethod = 'Tenant BulkSMS Token';
+      } else if (creds.tokenId && creds.tokenSecret) {
+        const rawCreds = `${creds.tokenId}:${creds.tokenSecret}`;
+        const base64Creds = Buffer.from(rawCreds).toString('base64');
+        authToken = `Basic ${base64Creds}`;
+        authMethod = 'Tenant Token ID + Token Secret (Dynamic)';
+      }
+    } else if (process.env.NODE_ENV === 'production' && resolved.source === 'env') {
+      throw new Error('BulkSMS credentials are not configured for this tenant in production.');
+    }
+  }
 
   if (!authToken && process.env.BULKSMS_TOKEN_ID && process.env.BULKSMS_TOKEN_SECRET) {
     const rawCreds = `${process.env.BULKSMS_TOKEN_ID}:${process.env.BULKSMS_TOKEN_SECRET}`;
@@ -144,6 +163,8 @@ const sendOtpSms = async (phoneNumber, otpCode, agreementNumber) => {
     authToken = `Basic ${base64Creds}`;
     authMethod = 'Token ID + Token Secret (Dynamic)';
   }
+
+  const apiUrl = `${baseUrl}/messages`;
 
   if (!authToken) {
     const errorMsg = 'BulkSMS authorization token is missing or misconfigured.';

@@ -128,6 +128,25 @@ exports.login = asyncHandler(async (req, res) => {
     return sendError(res, 'Invalid credentials', 401);
   }
 
+  // Check if tenant is active/suspended
+  if (user.tenantId) {
+    const tenant = await tenantContext.runAsSystem(() =>
+      Tenant.findById(user.tenantId)
+    );
+    if (!tenant) {
+      return sendError(res, 'Tenant account not found', 404);
+    }
+    if (tenant.status === 'suspended') {
+      return sendError(res, 'Your organization account has been suspended. Please contact support.', 403);
+    }
+    if (tenant.status === 'disabled') {
+      return sendError(res, 'Your organization account is disabled.', 403);
+    }
+    if (tenant.status === 'expired') {
+      return sendError(res, 'Your organization subscription has expired.', 403);
+    }
+  }
+
   // Check if role matches
   if (user.role !== role) {
     return sendError(res, `Unauthorized: Your account does not have ${role} privileges`, 403);

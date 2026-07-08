@@ -1,5 +1,7 @@
 const config = require('./emailjs.config');
 const { buildOtpEmailPayload } = require('./otpEmail.template');
+const tenantContext = require('../../tenancy/tenantContext');
+const credentialService = require('../../modules/saas/services/credentialService');
 
 /**
  * Sends OTP Email using the EmailJS HTTP REST API
@@ -14,13 +16,33 @@ const sendOtpEmail = async (toEmail, userName, otpCode, agreementNumber) => {
     throw new Error('Invalid email address format.');
   }
 
+  const tenantId = tenantContext.getTenantId();
+  let serviceId = config.serviceId;
+  let templateId = config.templateId;
+  let publicKey = config.publicKey;
+  let privateKey = config.privateKey;
+  let apiUrl = config.apiUrl || 'https://api.emailjs.com/api/v1.0/email/send';
+
+  if (tenantId) {
+    const resolved = await credentialService.resolve(tenantId, 'emailjs');
+    if (resolved && resolved.source === 'tenant') {
+      const creds = resolved.credentials || {};
+      serviceId = creds.serviceId || serviceId;
+      templateId = creds.templateId || templateId;
+      publicKey = creds.publicKey || publicKey;
+      privateKey = creds.privateKey || privateKey;
+    } else if (process.env.NODE_ENV === 'production' && resolved.source === 'env') {
+      throw new Error('EmailJS credentials are not configured for this tenant in production.');
+    }
+  }
+
   const templateParams = buildOtpEmailPayload(toEmail, userName, otpCode, agreementNumber);
 
   const payload = {
-    service_id: config.serviceId,
-    template_id: config.templateId,
-    user_id: config.publicKey,
-    accessToken: config.privateKey,
+    service_id: serviceId,
+    template_id: templateId,
+    user_id: publicKey,
+    accessToken: privateKey,
     template_params: templateParams,
   };
 
@@ -41,7 +63,7 @@ const sendOtpEmail = async (toEmail, userName, otpCode, agreementNumber) => {
     const timeout = setTimeout(() => controller.abort(), 10000);
     let response;
     try {
-      response = await fetch(config.apiUrl, {
+      response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

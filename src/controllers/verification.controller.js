@@ -8,6 +8,7 @@ const { generateVerificationHash } = require('../utils/verificationHashEngine');
 const VerificationLog = require('../models/VerificationLog');
 const CreditReport = require('../models/CreditReport');
 const AMLCheck = require('../models/AMLCheck');
+const tokenService = require('../modules/commerce/services/tokenService');
 const BankVerification = require('../models/BankVerification');
 const Borrower = require('../models/Borrower');
 const LoanApplication = require('../models/LoanApplication');
@@ -75,6 +76,15 @@ exports.verifyIdentityController = async (req, res) => {
 
     const formattedName = formatFullName(fullName);
 
+    // Charge tokens for IDV Plus Photo
+    const tenantId = req.tenantId || req.user?.tenantId;
+    const idemKey = `idem-idv-${borrowerId || idNumber}-${applicationId || ''}`;
+    await tokenService.charge(tenantId, 'phone_verification', {
+      actor: initiatedBy,
+      idempotencyKey: idemKey,
+      metadata: { borrowerId, applicationId, idNumber }
+    });
+
     // Call integration module
     const result = await datanamix.identity.verifyIdentity({
       idNumber,
@@ -113,7 +123,7 @@ exports.verifyIdentityController = async (req, res) => {
       errorMessage: error.message
     });
 
-    return res.status(error.statusCode || 500).json({
+    return res.status(error.status || error.statusCode || 500).json({
       success: false,
       message: error.message || 'Error occurred during ID verification.'
     });
@@ -129,6 +139,14 @@ exports.verifyFaceLivenessController = async (req, res) => {
 
   try {
     console.log(`🎭 [Face Liveness Route Handled] - Session: ${sessionId}`);
+
+    const tenantId = req.tenantId || req.user?.tenantId;
+    const idemKey = `idem-liveness-${sessionId || borrowerId}-${applicationId || ''}`;
+    await tokenService.charge(tenantId, 'facetec', {
+      actor: initiatedBy,
+      idempotencyKey: idemKey,
+      metadata: { borrowerId, applicationId, sessionId }
+    });
 
     const result = await datanamix.identity.verifyFaceLiveness({
       faceScan,
@@ -164,7 +182,7 @@ exports.verifyFaceLivenessController = async (req, res) => {
       errorMessage: error.message
     });
 
-    return res.status(error.statusCode || 500).json({
+    return res.status(error.status || error.statusCode || 500).json({
       success: false,
       message: error.message || 'Error occurred during face liveness verification.'
     });
@@ -199,7 +217,15 @@ exports.verifyBankController = async (req, res) => {
   const initiatedBy = req.user ? req.user._id : null;
 
   try {
-    console.log(`🏦 [Bank AHV Route Handled] - Acc: ${accountNumber}`);
+    console.log(`[][] [Bank AHV Route Handled] - Acc: ${accountNumber}`);
+
+    const tenantId = req.tenantId || req.user?.tenantId;
+    const idemKey = `idem-bank-${accountNumber}-${applicationId || ''}`;
+    await tokenService.charge(tenantId, 'phone_verification', {
+      actor: initiatedBy,
+      idempotencyKey: idemKey,
+      metadata: { borrowerId, applicationId, accountNumber }
+    });
 
     const result = await datanamix.bank.verifyBankAccount({
       bankName,
@@ -250,7 +276,7 @@ exports.verifyBankController = async (req, res) => {
       errorMessage: error.message
     });
 
-    return res.status(error.statusCode || 500).json({
+    return res.status(error.status || error.statusCode || 500).json({
       success: false,
       message: error.message || 'Error occurred during bank account verification.'
     });
@@ -266,6 +292,14 @@ exports.verifyCreditController = async (req, res) => {
 
   try {
     console.log(`📊 [Credit Bureau Check Route Handled] - ID: ${idNumber}`);
+
+    const tenantId = req.tenantId || req.user?.tenantId;
+    const idemKey = `idem-credit-${idNumber}-${applicationId || ''}`;
+    await tokenService.charge(tenantId, 'credit_bureau', {
+      actor: initiatedBy,
+      idempotencyKey: idemKey,
+      metadata: { borrowerId, applicationId, idNumber }
+    });
 
     const result = await datanamix.credit.getConsumerCreditReport({
       idNumber,
@@ -312,7 +346,7 @@ exports.verifyCreditController = async (req, res) => {
       errorMessage: error.message
     });
 
-    return res.status(error.statusCode || 500).json({
+    return res.status(error.status || error.statusCode || 500).json({
       success: false,
       message: error.message || 'Error occurred during credit bureau report pulling.'
     });
@@ -344,6 +378,14 @@ exports.verifyPhoneController = async (req, res) => {
     }
 
     const formattedName = formatFullName(fullName);
+
+    const tenantId = req.tenantId || req.user?.tenantId;
+    const idemKey = `idem-phone-${phoneNumber}-${applicationId || ''}`;
+    await tokenService.charge(tenantId, 'phone_verification', {
+      actor: initiatedBy,
+      idempotencyKey: idemKey,
+      metadata: { borrowerId, applicationId, phoneNumber }
+    });
 
     const result = await datanamix.phone.verifyPhoneOwnership({
       phoneNumber,
@@ -383,7 +425,7 @@ exports.verifyPhoneController = async (req, res) => {
       errorMessage: error.message
     });
 
-    return res.status(error.statusCode || 500).json({
+    return res.status(error.status || error.statusCode || 500).json({
       success: false,
       message: error.message || 'Error occurred during phone carrier verification.'
     });
@@ -399,6 +441,14 @@ exports.verifyAMLController = async (req, res) => {
 
   try {
     console.log(`🛡️ [AML pep Screening Route Handled] - Name: ${fullName}`);
+
+    const tenantId = req.tenantId || req.user?.tenantId;
+    const idemKey = `idem-aml-${idNumber || fullName}-${applicationId || ''}`;
+    await tokenService.charge(tenantId, 'aml', {
+      actor: initiatedBy,
+      idempotencyKey: idemKey,
+      metadata: { borrowerId, applicationId, idNumber }
+    });
 
     const result = await datanamix.aml.screenAML({
       idNumber,
@@ -445,7 +495,7 @@ exports.verifyAMLController = async (req, res) => {
       errorMessage: error.message
     });
 
-    return res.status(error.statusCode || 500).json({
+    return res.status(error.status || error.statusCode || 500).json({
       success: false,
       message: error.message || 'Error occurred during AML sanctions screening.'
     });
@@ -479,6 +529,14 @@ exports.verifyBorrowerKYCController = async (req, res) => {
 
   try {
     console.log(`[KYC Controller] Starting verification — ID: ${idNumber}`);
+
+    const tenantId = req.tenantId || req.user?.tenantId;
+    const idemKey = `idem-kyc-ocr-${idNumber}-${applicationId || ''}`;
+    await tokenService.charge(tenantId, 'ocr', {
+      actor: initiatedBy,
+      idempotencyKey: idemKey,
+      metadata: { borrowerId, applicationId, idNumber }
+    });
 
     const result = await callProfileIdPhotoMatch({
       idNumber,
@@ -578,7 +636,7 @@ exports.verifyBorrowerKYCController = async (req, res) => {
       errorMessage: error.message,
     });
 
-    return res.status(error.response?.status || 500).json({
+    return res.status(error.status || error.response?.status || 500).json({
       success: false,
       message: error.response?.data?.message || error.message || 'KYC verification failed',
     });
@@ -685,6 +743,14 @@ exports.verifyAddressProfileController = async (req, res) => {
   if (!surname)  return res.status(400).json({ success: false, message: 'surname is required' });
 
   try {
+    const tenantId = req.tenantId || req.user?.tenantId;
+    const idemKey = `idem-address-profile-${idNumber}-${applicationId || ''}`;
+    await tokenService.charge(tenantId, 'credit_bureau', {
+      actor: initiatedBy,
+      idempotencyKey: idemKey,
+      metadata: { borrowerId, applicationId, idNumber }
+    });
+
     // ── Guard: biometric must be completed first ───────────────────────────
     if (applicationId) {
       const app = await LoanApplication.findById(applicationId).select('kycVerification');
@@ -836,7 +902,7 @@ exports.verifyAddressProfileController = async (req, res) => {
       errorMessage: error.message,
     });
 
-    return res.status(error.response?.status || 500).json({
+    return res.status(error.status || error.response?.status || 500).json({
       success: false,
       message: error.response?.data?.message || error.message || 'Bureau verification failed',
     });

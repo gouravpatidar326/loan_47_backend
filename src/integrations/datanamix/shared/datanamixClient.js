@@ -5,6 +5,8 @@
 
 const { getAccessToken } = require('../auth/token.service');
 const { executeRequest } = require('./requestHandler');
+const tenantContext = require('../../../tenancy/tenantContext');
+const credentialService = require('../../../modules/saas/services/credentialService');
 const datanamixConfig = require('../../../config/datanamix.config');
 
 /**
@@ -13,19 +15,36 @@ const datanamixConfig = require('../../../config/datanamix.config');
  * @returns {Promise<Object>} The resolved API response
  */
 const datanamixClient = async (requestOptions = {}) => {
-  const { endpoint, method = 'POST', data = null, params = null, headers = {} } = requestOptions;
+  let { endpoint, method = 'POST', data = null, params = null, headers = {} } = requestOptions;
 
   try {
-    // 1. Fetch valid access token from cache or auth server
+    const tenantId = tenantContext.getTenantId();
     const token = await getAccessToken();
 
-    // 2. Build full request headers
+    // Resolve dynamic Base URL if tenant settings exist
+    if (tenantId) {
+      const resolved = await credentialService.resolve(tenantId, 'datanamix');
+      if (resolved && resolved.source === 'tenant') {
+        const creds = resolved.credentials || {};
+        if (creds.baseUrl) {
+          const configBaseUrl = (datanamixConfig.baseUrl || 'https://api.datanamix.com').replace(/\/$/, '');
+          const tenantBaseUrl = creds.baseUrl.replace(/\/$/, '');
+          if (endpoint.startsWith(configBaseUrl)) {
+            endpoint = endpoint.replace(configBaseUrl, tenantBaseUrl);
+          } else if (endpoint.startsWith('/')) {
+            endpoint = `${tenantBaseUrl}${endpoint}`;
+          }
+        }
+      }
+    }
+
+    // Build full request headers
     const requestHeaders = {
       'Authorization': `Bearer ${token}`,
       ...headers
     };
 
-    // 3. Fire the request using request handler
+    // Fire the request using request handler
     const response = await executeRequest({
       url: endpoint,
       method,

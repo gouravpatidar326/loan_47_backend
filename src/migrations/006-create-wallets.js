@@ -1,15 +1,43 @@
 /**
  * Migration 006 — Create a wallet for every existing tenant (idempotent).
+ * Also ensures TenantSettings and TenantApiSettings exist for every tenant.
  */
 const Tenant = require('../models/Tenant');
 const Wallet = require('../models/Wallet');
+const TenantSettings = require('../models/TenantSettings');
+const TenantApiSettings = require('../models/TenantApiSettings');
 
 async function up() {
-  const tenants = await Tenant.find({}).select('_id companyCode currency').lean();
+  const tenants = await Tenant.find({}).select('_id companyCode currency timezone locale').lean();
   const summary = [];
   for (const t of tenants) {
+    // 1. Ensure TenantSettings
+    await TenantSettings.updateOne(
+      { tenantId: t._id },
+      {
+        $setOnInsert: {
+          tenantId: t._id,
+          timezone: t.timezone || 'Africa/Johannesburg',
+          currency: t.currency || 'ZAR',
+          locale: t.locale || 'en-ZA',
+        },
+      },
+      { upsert: true }
+    );
+
+    // 2. Ensure TenantApiSettings
+    await TenantApiSettings.updateOne(
+      { tenantId: t._id },
+      { $setOnInsert: { tenantId: t._id } },
+      { upsert: true }
+    );
+
+    // 3. Ensure Wallet
     const existing = await Wallet.collection.findOne({ tenantId: t._id });
-    if (existing) { summary.push({ tenant: t.companyCode, action: 'exists' }); continue; }
+    if (existing) {
+      summary.push({ tenant: t.companyCode, action: 'exists' });
+      continue;
+    }
     const now = new Date();
     await Wallet.collection.insertOne({
       tenantId: t._id, currency: t.currency || 'ZAR', status: 'active',

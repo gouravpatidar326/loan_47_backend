@@ -18,7 +18,7 @@ const loginToDatanamix = async (tenantId) => {
   let baseUrl = (process.env.DATANAMIX_BASE_URL || 'https://api.datanamix.com').replace(/\/$/, '');
 
   const activeTenantId = tenantId || tenantContext.getTenantId();
-  if (activeTenantId) {
+  if (activeTenantId && activeTenantId !== 'global') {
     const resolved = await credentialService.resolve(activeTenantId, 'datanamix');
     if (resolved && resolved.source === 'tenant') {
       const creds = resolved.credentials || {};
